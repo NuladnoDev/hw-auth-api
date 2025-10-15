@@ -18,8 +18,12 @@ async function handleRegister(req, res, body) {
       .setProject(process.env.APPWRITE_PROJECT_ID)
       .setKey(process.env.APPWRITE_API_KEY);
     const users = new Users(client);
-    try { await users.create(ID.unique(), email, undefined, password, email); } catch (e) { if (e?.code !== 409) throw e; }
-    return json(res, 200, { ok: true });
+    try { await users.create(ID.unique(), email, undefined, password, email); } catch (e) { /* ignore conflicts */ }
+    // Найти созданного/существующего пользователя по email и вернуть его id
+    const { users: arr } = await users.list([], 100, 0);
+    const found = arr.find(u => (u.email||'').toLowerCase() === String(email).toLowerCase());
+    const uid = found ? found.$id : null;
+    return json(res, 200, { ok: true, userId: uid });
   } catch (e) { return json(res, 500, { error: e?.message || 'server error' }); }
 }
 
@@ -52,7 +56,8 @@ async function handleSetNickname(req, res, body) {
       targetUserId = found.$id;
     }
 
-    await users.update(targetUserId, { nickname });
+    // Сохраняем ник в preferences пользователя
+    await users.updatePrefs(targetUserId, { nickname });
     return json(res, 200, { ok: true });
   } catch (e) {
     return json(res, 500, { error: e?.message || 'server error' });
@@ -82,11 +87,10 @@ async function handleGetEmailFromNickname(req, res, body) {
       .setProject(process.env.APPWRITE_PROJECT_ID)
       .setKey(process.env.APPWRITE_API_KEY);
     const users = new Users(client);
-    // Поиск по всему списку users (до 100 — хватит для MVP)
     const { users: arr } = await users.list([], 100, 0);
-    const found = arr.find(u => (u.nickname||'').toLowerCase() === nickname);
+    const found = arr.find(u => String((u.prefs && u.prefs.nickname) || '').toLowerCase() === nickname);
     if (!found) return json(res, 404, { error: 'Пользователь с таким ником не найден' });
-    return json(res, 200, { ok: true, email: found.email });
+    return json(res, 200, { ok: true, email: found.email, userId: found.$id });
   } catch (e) {
     return json(res, 500, { error: e?.message || 'server error' });
   }
