@@ -1,4 +1,4 @@
-import { Client, Account, ID } from 'appwrite';
+import { Client, Account, Users, ID } from 'node-appwrite';
 
 const allow = (res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -20,14 +20,17 @@ export default async function handler(req, res) {
       .setProject(process.env.APPWRITE_PROJECT_ID)
       .setKey(process.env.APPWRITE_API_KEY);
 
+    const users = new Users(client);
     const account = new Account(client);
 
-    // создаём пользователя (если уже есть — пропустим)
     try {
-      await account.create(ID.unique(), email, password);
-    } catch {}
+      await users.create(ID.unique(), email, undefined, password, email);
+    } catch (e) {
+      if (!String(e?.message || '').includes('already') && e?.code !== 409) {
+        throw e;
+      }
+    }
 
-    // создаём сессию
     const session = await account.createEmailPasswordSession(email, password);
 
     return res.status(200).json({ ok: true, session });

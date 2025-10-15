@@ -1,4 +1,4 @@
-import { Client, Account } from 'appwrite';
+import { Client, Account } from 'node-appwrite';
 
 const allow = (res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -24,6 +24,6 @@ export default async function handler(req, res) {
     const session = await account.createEmailPasswordSession(email, password);
     return res.status(200).json({ ok: true, session });
   } catch (e) {
-    return res.status(401).json({ error: e?.message || 'unauthorized' });
+    return res.status(401).json({ error: 'Неверный email или пароль' });
   }
 }
