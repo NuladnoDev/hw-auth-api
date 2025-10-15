@@ -8,6 +8,6 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "appwrite": "^21.2.1"
+    "node-appwrite": "^20.2.1"
   }
 }
