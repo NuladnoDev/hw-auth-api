@@ -1,0 +1,13 @@
+{
+  "name": "hw-auth-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "appwrite": "^21.2.1"
+  }
+}
