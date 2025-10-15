@@ -37,7 +37,17 @@ async function handleCheckNickname(req, res, body) {
 async function handleSetNickname(req, res, body) {
   const { userId, nickname } = body || {};
   if (!userId || !nickname) return json(res, 400, { error: 'Нет данных' });
-  return json(res, 200, { ok: true });
+  try {
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT)
+      .setProject(process.env.APPWRITE_PROJECT_ID)
+      .setKey(process.env.APPWRITE_API_KEY);
+    const users = new Users(client);
+    await users.update(userId, { nickname });
+    return json(res, 200, { ok: true });
+  } catch (e) {
+    return json(res, 500, { error: e?.message || 'server error' });
+  }
 }
 
 const INVITES = [
@@ -52,6 +62,25 @@ async function handleVerifyInvite(req, res, body) {
   if (!code) return json(res, 400, { error: 'Введите код' });
   if (!INVITES.includes(code)) return json(res, 401, { error: 'Неверный код' });
   return json(res, 200, { ok: true });
+}
+
+async function handleGetEmailFromNickname(req, res, body) {
+  const nickname = String((body || {}).nickname || '').toLowerCase();
+  if (!nickname) return json(res, 400, { error: 'Нет никнейма' });
+  try {
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT)
+      .setProject(process.env.APPWRITE_PROJECT_ID)
+      .setKey(process.env.APPWRITE_API_KEY);
+    const users = new Users(client);
+    // Поиск по всему списку users (до 100 — хватит для MVP)
+    const { users: arr } = await users.list([], 100, 0);
+    const found = arr.find(u => (u.nickname||'').toLowerCase() === nickname);
+    if (!found) return json(res, 404, { error: 'Пользователь с таким ником не найден' });
+    return json(res, 200, { ok: true, email: found.email });
+  } catch (e) {
+    return json(res, 500, { error: e?.message || 'server error' });
+  }
 }
 
 export default async function handler(req, res) {
@@ -72,6 +101,7 @@ export default async function handler(req, res) {
   if (path.endsWith('/check-nickname')) return handleCheckNickname(req, res, body);
   if (path.endsWith('/set-nickname')) return handleSetNickname(req, res, body);
   if (path.endsWith('/verify-invite')) return handleVerifyInvite(req, res, body);
+  if (path.endsWith('/get-email-from-nickname')) return handleGetEmailFromNickname(req, res, body);
 
   return json(res, 404, { error: 'Not found' });
 }
