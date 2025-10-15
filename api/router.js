@@ -35,15 +35,24 @@ async function handleCheckNickname(req, res, body) {
 }
 
 async function handleSetNickname(req, res, body) {
-  const { userId, nickname } = body || {};
-  if (!userId || !nickname) return json(res, 400, { error: 'Нет данных' });
+  const { userId, email, nickname } = body || {};
+  if ((!userId && !email) || !nickname) return json(res, 400, { error: 'Нет данных' });
   try {
     const client = new Client()
       .setEndpoint(process.env.APPWRITE_ENDPOINT)
       .setProject(process.env.APPWRITE_PROJECT_ID)
       .setKey(process.env.APPWRITE_API_KEY);
     const users = new Users(client);
-    await users.update(userId, { nickname });
+
+    let targetUserId = userId;
+    if (!targetUserId && email) {
+      const { users: arr } = await users.list([], 100, 0);
+      const found = arr.find(u => (u.email||'').toLowerCase() === String(email).toLowerCase());
+      if (!found) return json(res, 404, { error: 'Пользователь не найден по email' });
+      targetUserId = found.$id;
+    }
+
+    await users.update(targetUserId, { nickname });
     return json(res, 200, { ok: true });
   } catch (e) {
     return json(res, 500, { error: e?.message || 'server error' });
