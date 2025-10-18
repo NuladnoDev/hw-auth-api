@@ -18,13 +18,34 @@ async function handleRegister(req, res, body) {
       .setProject(process.env.APPWRITE_PROJECT_ID)
       .setKey(process.env.APPWRITE_API_KEY);
     const users = new Users(client);
-    try { await users.create(ID.unique(), email, undefined, password, email); } catch (e) { /* ignore conflicts */ }
-    // Найти созданного/существующего пользователя по email и вернуть его id
+    
+    console.log('[register] Creating user for email:', email);
+    let createdUser = null;
+    try { 
+      createdUser = await users.create(ID.unique(), email, undefined, password, email);
+      console.log('[register] User created successfully:', createdUser.$id);
+    } catch (e) { 
+      console.log('[register] User creation error (might already exist):', e?.message);
+    }
+    
+    // Если пользователь был создан, используем его ID
+    if (createdUser && createdUser.$id) {
+      console.log('[register] Returning created user ID:', createdUser.$id);
+      return json(res, 200, { ok: true, userId: createdUser.$id });
+    }
+    
+    // Иначе ищем в списке пользователей
+    console.log('[register] Searching for user in list...');
     const { users: arr } = await users.list([], 100, 0);
+    console.log('[register] Found users:', arr.length);
     const found = arr.find(u => (u.email||'').toLowerCase() === String(email).toLowerCase());
     const uid = found ? found.$id : null;
+    console.log('[register] Found user ID:', uid);
     return json(res, 200, { ok: true, userId: uid });
-  } catch (e) { return json(res, 500, { error: e?.message || 'server error' }); }
+  } catch (e) { 
+    console.log('[register] Error:', e?.message);
+    return json(res, 500, { error: e?.message || 'server error' }); 
+  }
 }
 
 function isLatinNick(n) { return /^[a-zA-Z0-9_]+$/.test(n); }
