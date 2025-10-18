@@ -1,0 +1,7 @@
+{
+    "version": 2,
+    "routes": [
+      { "src": "/api/auth/(register|login|logout|check-nickname|set-nickname|verify-invite|get-user-by-email)", "dest": "/api/router.js" }
+    ]
+  }
+  
