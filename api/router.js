@@ -40,10 +40,10 @@ async function handleCheckNickname(req, res, body) {
 
 async function handleSetNickname(req, res, body) {
   console.log('[set-nickname] body:', body);
-  const { userId, email, nickname } = body || {};
-  if ((!userId && !email) || !nickname) {
-    console.log('[set-nickname] Мало данных:', { userId, email, nickname });
-    return json(res, 400, { error: 'Нет данных' });
+  const { userId, nickname } = body || {};
+  if (!userId || !nickname) {
+    console.log('[set-nickname] Мало данных:', { userId, nickname });
+    return json(res, 400, { error: 'Нет userId или nickname' });
   }
   try {
     const client = new Client()
@@ -52,29 +52,8 @@ async function handleSetNickname(req, res, body) {
       .setKey(process.env.APPWRITE_API_KEY);
     const users = new Users(client);
 
-    let targetUserId = userId;
-    if (!targetUserId && email) {
-      let found = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const { users: arr } = await users.list([], 100, 0);
-        found = arr.find(u => (u.email||'').toLowerCase() === String(email).toLowerCase());
-        if (found) break;
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-      if (!found) {
-        console.log('[set-nickname] Не найден пользователь по email:', email);
-        return json(res, 404, { error: 'Пользователь не найден по email' });
-      }
-      targetUserId = found.$id;
-      console.log('[set-nickname] Найден userId:', targetUserId);
-    }
-    if (!targetUserId) {
-      console.log('[set-nickname] Не удалось определить userId');
-      return json(res, 400, { error: 'Не удалось определить userId' });
-    }
-
-    await users.updatePrefs(targetUserId, { nickname });
-    console.log('[set-nickname] Ник установлен!', { targetUserId, nickname });
+    await users.updatePrefs(userId, { nickname });
+    console.log('[set-nickname] Ник установлен!', { userId, nickname });
     return json(res, 200, { ok: true });
   } catch (e) {
     console.log('[set-nickname] error:', e, e?.stack);
