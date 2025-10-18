@@ -1,4 +1,4 @@
-import { Client, Users, ID, Databases } from 'node-appwrite';
+import { Client, Users, ID, Databases, Query } from 'node-appwrite';
 
 function json(res, code, data) {
   res.statusCode = code;
@@ -147,7 +147,7 @@ async function handleGetChats(req, res, body) {
     const { documents: chats } = await databases.listDocuments(
       process.env.APPWRITE_DATABASE_ID || 'main',
       process.env.APPWRITE_CHATS_COLLECTION_ID || 'chats',
-      [`participants=${userId}`]
+      [Query.equal('participants', userId)]
     );
     
     return json(res, 200, { chats });
@@ -230,7 +230,7 @@ async function handleCreateChat(req, res, body) {
     const { documents: existingChats } = await databases.listDocuments(
       process.env.APPWRITE_DATABASE_ID || 'main',
       process.env.APPWRITE_CHATS_COLLECTION_ID || 'chats',
-      [`participants=${userId}`, `participants=${participantId}`]
+      [Query.equal('participants', userId), Query.equal('participants', participantId)]
     );
     
     if (existingChats.length > 0) {
@@ -272,7 +272,7 @@ async function handleCreateFriendRequest(req, res, body) {
     const { documents: existing } = await databases.listDocuments(
       process.env.APPWRITE_DATABASE_ID || 'main',
       FRIEND_REQUESTS_COLLECTION_ID,
-      [`from=${from}`, `to=${to}`, `status=pending`]
+      [Query.equal('from', from), Query.equal('to', to), Query.equal('status', 'pending')]
     );
     if (existing.length > 0) return json(res, 400, { error: 'Already sent or pending' });
 
@@ -302,7 +302,7 @@ async function handleListIncomingFriendRequests(req, res, body) {
     const { documents } = await databases.listDocuments(
       process.env.APPWRITE_DATABASE_ID || 'main',
       FRIEND_REQUESTS_COLLECTION_ID,
-      [`to=${userId}`, `status=pending`]
+      [Query.equal('to', userId), Query.equal('status', 'pending')]
     );
     return json(res, 200, { requests: documents });
   } catch (e) {
@@ -323,7 +323,7 @@ async function handleListOutgoingFriendRequests(req, res, body) {
     const { documents } = await databases.listDocuments(
       process.env.APPWRITE_DATABASE_ID || 'main',
       FRIEND_REQUESTS_COLLECTION_ID,
-      [`from=${userId}`, `status=pending`]
+      [Query.equal('from', userId), Query.equal('status', 'pending')]
     );
     return json(res, 200, { requests: documents });
   } catch (e) {
@@ -367,7 +367,7 @@ async function handleAcceptFriendRequest(req, res, body) {
     const { documents } = await databases.listDocuments(
       process.env.APPWRITE_DATABASE_ID || 'main',
       FRIEND_REQUESTS_COLLECTION_ID,
-      [`$id=${requestId}`]
+      [Query.equal('$id', requestId)]
     );
     if (!documents.length) return json(res, 400, { error: 'Not found' });
     const reqDoc = documents[0];
@@ -384,7 +384,7 @@ async function handleAcceptFriendRequest(req, res, body) {
     const { documents: existingChats } = await databases.listDocuments(
       process.env.APPWRITE_DATABASE_ID || 'main',
       process.env.APPWRITE_CHATS_COLLECTION_ID || 'chats',
-      [`participants=${from}`, `participants=${to}`]
+      [Query.equal('participants', from), Query.equal('participants', to)]
     );
     let chat;
     if (existingChats.length > 0) {
