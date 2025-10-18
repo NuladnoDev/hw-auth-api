@@ -1,4 +1,4 @@
-import { Client, Users, ID } from 'node-appwrite';
+import { Client, Users, ID, Databases } from 'node-appwrite';
 
 function json(res, code, data) {
   res.statusCode = code;
@@ -132,6 +132,280 @@ async function handleGetUserByEmail(req, res, body) {
   }
 }
 
+// === CHAT API ===
+async function handleGetChats(req, res, body) {
+  const { userId } = body || {};
+  if (!userId) return json(res, 400, { error: 'Нет userId' });
+  try {
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT)
+      .setProject(process.env.APPWRITE_PROJECT_ID)
+      .setKey(process.env.APPWRITE_API_KEY);
+    const databases = new Databases(client);
+    
+    // Получаем чаты пользователя
+    const { documents: chats } = await databases.listDocuments(
+      process.env.APPWRITE_DATABASE_ID || 'main',
+      process.env.APPWRITE_CHATS_COLLECTION_ID || 'chats',
+      [`participants=${userId}`]
+    );
+    
+    return json(res, 200, { chats });
+  } catch (e) {
+    console.log('[get-chats] error:', e?.message);
+    return json(res, 500, { error: e?.message || 'server error' });
+  }
+}
+
+async function handleGetMessages(req, res, body) {
+  const { chatId, limit = 50 } = body || {};
+  if (!chatId) return json(res, 400, { error: 'Нет chatId' });
+  try {
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT)
+      .setProject(process.env.APPWRITE_PROJECT_ID)
+      .setKey(process.env.APPWRITE_API_KEY);
+    const databases = new Databases(client);
+    
+    // Получаем сообщения чата
+    const { documents: messages } = await databases.listDocuments(
+      process.env.APPWRITE_DATABASE_ID || 'main',
+      process.env.APPWRITE_MESSAGES_COLLECTION_ID || 'messages',
+      [`chatId=${chatId}`],
+      limit,
+      0,
+      undefined,
+      undefined,
+      ['createdAt']
+    );
+    
+    return json(res, 200, { messages });
+  } catch (e) {
+    console.log('[get-messages] error:', e?.message);
+    return json(res, 500, { error: e?.message || 'server error' });
+  }
+}
+
+async function handleSendMessage(req, res, body) {
+  const { chatId, userId, message } = body || {};
+  if (!chatId || !userId || !message) return json(res, 400, { error: 'Недостаточно данных' });
+  try {
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT)
+      .setProject(process.env.APPWRITE_PROJECT_ID)
+      .setKey(process.env.APPWRITE_API_KEY);
+    const databases = new Databases(client);
+    
+    // Создаём сообщение
+    const messageDoc = await databases.createDocument(
+      process.env.APPWRITE_DATABASE_ID || 'main',
+      process.env.APPWRITE_MESSAGES_COLLECTION_ID || 'messages',
+      ID.unique(),
+      {
+        chatId,
+        userId,
+        message: message.trim(),
+        createdAt: new Date().toISOString()
+      }
+    );
+    
+    return json(res, 200, { message: messageDoc });
+  } catch (e) {
+    console.log('[send-message] error:', e?.message);
+    return json(res, 500, { error: e?.message || 'server error' });
+  }
+}
+
+async function handleCreateChat(req, res, body) {
+  const { userId, participantId } = body || {};
+  if (!userId || !participantId) return json(res, 400, { error: 'Нет userId или participantId' });
+  try {
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT)
+      .setProject(process.env.APPWRITE_PROJECT_ID)
+      .setKey(process.env.APPWRITE_API_KEY);
+    const databases = new Databases(client);
+    
+    // Проверяем, есть ли уже чат между этими пользователями
+    const { documents: existingChats } = await databases.listDocuments(
+      process.env.APPWRITE_DATABASE_ID || 'main',
+      process.env.APPWRITE_CHATS_COLLECTION_ID || 'chats',
+      [`participants=${userId}`, `participants=${participantId}`]
+    );
+    
+    if (existingChats.length > 0) {
+      return json(res, 200, { chat: existingChats[0] });
+    }
+    
+    // Создаём новый чат
+    const chatDoc = await databases.createDocument(
+      process.env.APPWRITE_DATABASE_ID || 'main',
+      process.env.APPWRITE_CHATS_COLLECTION_ID || 'chats',
+      ID.unique(),
+      {
+        participants: [userId, participantId],
+        createdAt: new Date().toISOString()
+      }
+    );
+    
+    return json(res, 200, { chat: chatDoc });
+  } catch (e) {
+    console.log('[create-chat] error:', e?.message);
+    return json(res, 500, { error: e?.message || 'server error' });
+  }
+}
+
+// === FRIEND REQUESTS API ===
+const FRIEND_REQUESTS_COLLECTION_ID = process.env.APPWRITE_FRIEND_REQUESTS_COLLECTION_ID || 'friend_requests';
+
+// Создать заявку в друзья
+async function handleCreateFriendRequest(req, res, body) {
+  const { from, to } = body || {};
+  if (!from || !to || from === to) return json(res, 400, { error: 'from/to required' });
+  try {
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT)
+      .setProject(process.env.APPWRITE_PROJECT_ID)
+      .setKey(process.env.APPWRITE_API_KEY);
+    const databases = new Databases(client);
+    // Проверяем на дубликаты (pending)
+    const { documents: existing } = await databases.listDocuments(
+      process.env.APPWRITE_DATABASE_ID || 'main',
+      FRIEND_REQUESTS_COLLECTION_ID,
+      [`from=${from}`, `to=${to}`, `status=pending`]
+    );
+    if (existing.length > 0) return json(res, 400, { error: 'Already sent or pending' });
+
+    const doc = await databases.createDocument(
+      process.env.APPWRITE_DATABASE_ID || 'main',
+      FRIEND_REQUESTS_COLLECTION_ID,
+      ID.unique(),
+      { from, to, status: 'pending', createdAt: new Date().toISOString() }
+    );
+    return json(res, 200, { ok: true, request: doc });
+  } catch (e) {
+    console.log('[friend_request] error:', e?.message);
+    return json(res, 500, { error: e?.message || 'server error' });
+  }
+}
+
+// Получить входящие заявки (pending)
+async function handleListIncomingFriendRequests(req, res, body) {
+  const { userId } = body || {};
+  if (!userId) return json(res, 400, { error: 'userId required' });
+  try {
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT)
+      .setProject(process.env.APPWRITE_PROJECT_ID)
+      .setKey(process.env.APPWRITE_API_KEY);
+    const databases = new Databases(client);
+    const { documents } = await databases.listDocuments(
+      process.env.APPWRITE_DATABASE_ID || 'main',
+      FRIEND_REQUESTS_COLLECTION_ID,
+      [`to=${userId}`, `status=pending`]
+    );
+    return json(res, 200, { requests: documents });
+  } catch (e) {
+    return json(res, 500, { error: e?.message || 'server error' });
+  }
+}
+
+// Получить исходящие заявки (pending)
+async function handleListOutgoingFriendRequests(req, res, body) {
+  const { userId } = body || {};
+  if (!userId) return json(res, 400, { error: 'userId required' });
+  try {
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT)
+      .setProject(process.env.APPWRITE_PROJECT_ID)
+      .setKey(process.env.APPWRITE_API_KEY);
+    const databases = new Databases(client);
+    const { documents } = await databases.listDocuments(
+      process.env.APPWRITE_DATABASE_ID || 'main',
+      FRIEND_REQUESTS_COLLECTION_ID,
+      [`from=${userId}`, `status=pending`]
+    );
+    return json(res, 200, { requests: documents });
+  } catch (e) {
+    return json(res, 500, { error: e?.message || 'server error' });
+  }
+}
+
+// Отклонить заявку (ignore)
+async function handleIgnoreFriendRequest(req, res, body) {
+  const { requestId } = body || {};
+  if (!requestId) return json(res, 400, { error: 'requestId required' });
+  try {
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT)
+      .setProject(process.env.APPWRITE_PROJECT_ID)
+      .setKey(process.env.APPWRITE_API_KEY);
+    const databases = new Databases(client);
+    const ignored = await databases.updateDocument(
+      process.env.APPWRITE_DATABASE_ID || 'main',
+      FRIEND_REQUESTS_COLLECTION_ID,
+      requestId,
+      { status: 'ignored' }
+    );
+    return json(res, 200, { ok: true, request: ignored });
+  } catch (e) {
+    return json(res, 500, { error: e?.message || 'server error' });
+  }
+}
+
+// Принять заявку (accept)
+async function handleAcceptFriendRequest(req, res, body) {
+  const { requestId } = body || {};
+  if (!requestId) return json(res, 400, { error: 'requestId required' });
+  try {
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT)
+      .setProject(process.env.APPWRITE_PROJECT_ID)
+      .setKey(process.env.APPWRITE_API_KEY);
+    const databases = new Databases(client);
+    // Найти заявку
+    const { documents } = await databases.listDocuments(
+      process.env.APPWRITE_DATABASE_ID || 'main',
+      FRIEND_REQUESTS_COLLECTION_ID,
+      [`$id=${requestId}`]
+    );
+    if (!documents.length) return json(res, 400, { error: 'Not found' });
+    const reqDoc = documents[0];
+    // Обновить статус
+    await databases.updateDocument(
+      process.env.APPWRITE_DATABASE_ID || 'main',
+      FRIEND_REQUESTS_COLLECTION_ID,
+      requestId,
+      { status: 'accepted' }
+    );
+    // Создать чат (если нет)
+    const { from, to } = reqDoc;
+    // Проверим чаты между ними
+    const { documents: existingChats } = await databases.listDocuments(
+      process.env.APPWRITE_DATABASE_ID || 'main',
+      process.env.APPWRITE_CHATS_COLLECTION_ID || 'chats',
+      [`participants=${from}`, `participants=${to}`]
+    );
+    let chat;
+    if (existingChats.length > 0) {
+      chat = existingChats[0];
+    } else {
+      chat = await databases.createDocument(
+        process.env.APPWRITE_DATABASE_ID || 'main',
+        process.env.APPWRITE_CHATS_COLLECTION_ID || 'chats',
+        ID.unique(),
+        {
+          participants: [from, to],
+          createdAt: new Date().toISOString()
+        }
+      );
+    }
+    return json(res, 200, { ok: true, chat });
+  } catch (e) {
+    return json(res, 500, { error: e?.message || 'server error' });
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return json(res, 204, {});
   if (!req.url) return json(res, 404, { error: 'Not found' });
@@ -152,6 +426,19 @@ export default async function handler(req, res) {
   if (path.endsWith('/verify-invite')) return handleVerifyInvite(req, res, body);
   if (path.endsWith('/get-email-from-nickname')) return handleGetEmailFromNickname(req, res, body);
   if (path.endsWith('/get-user-by-email')) return handleGetUserByEmail(req, res, body);
+  
+  // Chat API
+  if (path.endsWith('/get-chats')) return handleGetChats(req, res, body);
+  if (path.endsWith('/get-messages')) return handleGetMessages(req, res, body);
+  if (path.endsWith('/send-message')) return handleSendMessage(req, res, body);
+  if (path.endsWith('/create-chat')) return handleCreateChat(req, res, body);
+
+  // Friend Requests API
+  if (path.endsWith('/friend-request/create')) return handleCreateFriendRequest(req, res, body);
+  if (path.endsWith('/friend-request/incoming')) return handleListIncomingFriendRequests(req, res, body);
+  if (path.endsWith('/friend-request/outgoing')) return handleListOutgoingFriendRequests(req, res, body);
+  if (path.endsWith('/friend-request/accept')) return handleAcceptFriendRequest(req, res, body);
+  if (path.endsWith('/friend-request/ignore')) return handleIgnoreFriendRequest(req, res, body);
 
   return json(res, 404, { error: 'Not found' });
 }
