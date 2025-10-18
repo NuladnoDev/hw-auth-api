@@ -114,6 +114,24 @@ async function handleGetEmailFromNickname(req, res, body) {
   }
 }
 
+async function handleGetUserByEmail(req, res, body) {
+  const { email } = body || {};
+  if (!email) return json(res, 400, { error: 'Введите email' });
+  try {
+    const client = new Client()
+      .setEndpoint(process.env.APPWRITE_ENDPOINT)
+      .setProject(process.env.APPWRITE_PROJECT_ID)
+      .setKey(process.env.APPWRITE_API_KEY);
+    const users = new Users(client);
+    const { users: arr } = await users.list([], 100, 0);
+    const found = arr.find(u => (u.email||'').toLowerCase() === String(email).toLowerCase());
+    if (!found) return json(res, 404, { error: 'Пользователь не найден' });
+    return json(res, 200, { userId: found.$id });
+  } catch (e) {
+    return json(res, 500, { error: e?.message || 'server error' });
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return json(res, 204, {});
   if (!req.url) return json(res, 404, { error: 'Not found' });
@@ -133,6 +151,7 @@ export default async function handler(req, res) {
   if (path.endsWith('/set-nickname')) return handleSetNickname(req, res, body);
   if (path.endsWith('/verify-invite')) return handleVerifyInvite(req, res, body);
   if (path.endsWith('/get-email-from-nickname')) return handleGetEmailFromNickname(req, res, body);
+  if (path.endsWith('/get-user-by-email')) return handleGetUserByEmail(req, res, body);
 
   return json(res, 404, { error: 'Not found' });
 }
