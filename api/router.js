@@ -39,8 +39,12 @@ async function handleCheckNickname(req, res, body) {
 }
 
 async function handleSetNickname(req, res, body) {
+  console.log('[set-nickname] body:', body);
   const { userId, email, nickname } = body || {};
-  if ((!userId && !email) || !nickname) return json(res, 400, { error: 'Нет данных' });
+  if ((!userId && !email) || !nickname) {
+    console.log('[set-nickname] Мало данных:', { userId, email, nickname });
+    return json(res, 400, { error: 'Нет данных' });
+  }
   try {
     const client = new Client()
       .setEndpoint(process.env.APPWRITE_ENDPOINT)
@@ -50,23 +54,30 @@ async function handleSetNickname(req, res, body) {
 
     let targetUserId = userId;
     if (!targetUserId && email) {
-      // Ищем пользователя по email с задержкой (возможно, пользователь только что создался)
       let found = null;
       for (let attempt = 0; attempt < 3; attempt++) {
         const { users: arr } = await users.list([], 100, 0);
         found = arr.find(u => (u.email||'').toLowerCase() === String(email).toLowerCase());
         if (found) break;
-        await new Promise(resolve => setTimeout(resolve, 1000)); // ждем 1 сек
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
-      if (!found) return json(res, 404, { error: 'Пользователь не найден по email' });
+      if (!found) {
+        console.log('[set-nickname] Не найден пользователь по email:', email);
+        return json(res, 404, { error: 'Пользователь не найден по email' });
+      }
       targetUserId = found.$id;
+      console.log('[set-nickname] Найден userId:', targetUserId);
+    }
+    if (!targetUserId) {
+      console.log('[set-nickname] Не удалось определить userId');
+      return json(res, 400, { error: 'Не удалось определить userId' });
     }
 
-    // Сохраняем ник в preferences пользователя
     await users.updatePrefs(targetUserId, { nickname });
+    console.log('[set-nickname] Ник установлен!', { targetUserId, nickname });
     return json(res, 200, { ok: true });
   } catch (e) {
-    console.error('Set nickname error:', e);
+    console.log('[set-nickname] error:', e, e?.stack);
     return json(res, 500, { error: e?.message || 'server error' });
   }
 }
